@@ -130,6 +130,9 @@ cp .env.example .env
 # Run complete pytest test suite (26 tests)
 python -m pytest tests/ -v
 
+# Update a user's subscription plan (e.g. to 'pro' or 'enterprise')
+python set_plan.py user@example.com pro
+
 # Start FastAPI server
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
