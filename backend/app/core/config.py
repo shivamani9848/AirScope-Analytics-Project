@@ -12,7 +12,11 @@ class Settings:
 
     @property
     def API_KEY(self) -> str:
-        return os.getenv("API_KEY", "dev-key-123")
+        key = os.getenv("API_KEY", "dev-key-123")
+        env = os.getenv("ENV", os.getenv("ENVIRONMENT", "development")).lower()
+        if env == "production" and key in ("dev-key-123", "replace-with-a-high-entropy-api-key", ""):
+            raise ValueError("CRITICAL SECURITY ERROR: Secure production API_KEY must be provided via environment.")
+        return key
 
     @property
     def DEFAULT_PLAN(self) -> str:
@@ -20,7 +24,11 @@ class Settings:
 
     @property
     def JWT_SECRET(self) -> str:
-        return os.getenv("JWT_SECRET", "your-secret-key-change-in-production")
+        secret = os.getenv("JWT_SECRET", "your-secret-key-change-in-production")
+        env = os.getenv("ENV", os.getenv("ENVIRONMENT", "development")).lower()
+        if env == "production" and (secret in ("your-secret-key-change-in-production", "your-secure-random-jwt-secret-key-here", "") or len(secret) < 32):
+            raise ValueError("CRITICAL SECURITY ERROR: Cryptographic JWT_SECRET (>= 32 chars) must be provided in production.")
+        return secret
 
     @property
     def JWT_EXPIRES_MIN(self) -> int:

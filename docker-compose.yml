@@ -6,16 +6,16 @@ services:
     container_name: airscope-db
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_secret_change_me}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Error: MYSQL_ROOT_PASSWORD must be set in .env}
       MYSQL_DATABASE: ${MYSQL_DB:-airq}
       MYSQL_USER: ${MYSQL_USER:-airscope}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-airscope_pass}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Error: MYSQL_PASSWORD must be set in .env}
     ports:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root_secret_change_me}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -28,13 +28,14 @@ services:
     container_name: airscope-backend
     restart: always
     environment:
-      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-airscope}:${MYSQL_PASSWORD:-airscope_pass}@db:3306/${MYSQL_DB:-airq}?charset=utf8mb4
-      ALLOWED_ORIGINS: http://localhost,http://localhost:80,http://localhost:5173,http://127.0.0.1:5173
-      API_KEY: ${API_KEY:-dev-key-123}
-      JWT_SECRET: ${JWT_SECRET:-your-secure-random-jwt-secret-key-here}
-      JWT_EXPIRES_MIN: 60
+      ENV: production
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-airscope}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DB:-airq}?charset=utf8mb4
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost,http://localhost:80,http://localhost:5173,http://127.0.0.1:5173}
+      API_KEY: ${API_KEY:?Error: API_KEY must be set in .env}
+      JWT_SECRET: ${JWT_SECRET:?Error: JWT_SECRET must be set in .env}
+      JWT_EXPIRES_MIN: ${JWT_EXPIRES_MIN:-60}
       DEFAULT_PLAN: free
-      SOURCES_ENABLED: open-meteo,openaq,iqair,waqi
+      SOURCES_ENABLED: ${SOURCES_ENABLED:-open-meteo,openaq,iqair,waqi}
       AGG_WEIGHTS: open-meteo=1.0,openaq=1.0,iqair=0.8,waqi=0.8
     ports:
       - "8000:8000"
