@@ -10,7 +10,9 @@ from .normalize import make_row, parse_ts
 
 logger = logging.getLogger(__name__)
 
-TIMEOUT = 15
+import time
+
+TIMEOUT = 10
 RETRIES = 2
 
 
@@ -22,9 +24,17 @@ def _get(url: str, params: Dict[str, Any] = None, headers: Dict[str, Any] = None
             r = requests.get(url, params=params, headers=headers, timeout=TIMEOUT)
             if r.status_code == 200:
                 return r
-            logger.warning("WAQI non-200: %s", r.status_code)
+            if r.status_code in {400, 401, 403, 404, 410, 422}:
+                logger.warning("WAQI permanent error %s (not retrying)", r.status_code)
+                return None
+            logger.warning("WAQI transient non-200: %s", r.status_code)
+        except (requests.Timeout, requests.ConnectionError) as e:
+            logger.warning("WAQI network issue (try %s): %s", i + 1, e)
         except Exception as e:
             logger.warning("WAQI request failed (try %s): %s", i + 1, e)
+            return None
+        if i < RETRIES:
+            time.sleep(0.5 * (2 ** i))
     return None
 
 

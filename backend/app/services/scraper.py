@@ -42,37 +42,74 @@ def flatten_rows(city: str, lat: float, lon: float, data: dict):
 def upsert_rows(db: Session, rows: list[dict]) -> int:
     if not rows:
         return 0
-    # Try native upsert; if the DB lacks the unique key, fallback to code-level upsert
+    
+    dialect_name = ""
     try:
-        sql = text("""
-                   INSERT INTO measurements (ts, city, latitude, longitude, pm25, pm10, source)
-                   VALUES (:ts, :city, :latitude, :longitude, :pm25, :pm10, :source)
-                       ON DUPLICATE KEY UPDATE
-                                            pm25=VALUES(pm25),
-                                            pm10=VALUES(pm10),
-                                            latitude=VALUES(latitude),
-                                            longitude=VALUES(longitude);
-                   """)
-        db.execute(sql, rows)
-        db.commit()
-        return len(rows)
+        bind = db.get_bind() if hasattr(db, "get_bind") else getattr(db, "bind", None)
+        if bind and hasattr(bind, "dialect"):
+            dialect_name = bind.dialect.name.lower()
     except Exception:
-        pass
+        dialect_name = ""
 
-    # Fallback: INSERT IGNORE, then UPDATE existing by (ts, city, source)
+    # 1. SQLite dialect
+    if "sqlite" in dialect_name:
+        try:
+            sql = text("""
+                INSERT INTO measurements (ts, city, latitude, longitude, pm25, pm10, source)
+                VALUES (:ts, :city, :latitude, :longitude, :pm25, :pm10, :source)
+                ON CONFLICT(ts, city, source) DO UPDATE SET
+                    pm25 = excluded.pm25,
+                    pm10 = excluded.pm10,
+                    latitude = excluded.latitude,
+                    longitude = excluded.longitude
+            """)
+            db.execute(sql, rows)
+            db.commit()
+            return len(rows)
+        except Exception:
+            db.rollback()
+
+    # 2. MySQL / MariaDB dialect
+    elif "mysql" in dialect_name or "mariadb" in dialect_name:
+        try:
+            sql = text("""
+                INSERT INTO measurements (ts, city, latitude, longitude, pm25, pm10, source)
+                VALUES (:ts, :city, :latitude, :longitude, :pm25, :pm10, :source)
+                ON DUPLICATE KEY UPDATE
+                    pm25 = VALUES(pm25),
+                    pm10 = VALUES(pm10),
+                    latitude = VALUES(latitude),
+                    longitude = VALUES(longitude)
+            """)
+            db.execute(sql, rows)
+            db.commit()
+            return len(rows)
+        except Exception:
+            db.rollback()
+
+    # 3. Portable fallback: upsert via select/update/insert
     try:
-        ins_sql = text("""
-            INSERT IGNORE INTO measurements (ts, city, latitude, longitude, pm25, pm10, source)
-            VALUES (:ts, :city, :latitude, :longitude, :pm25, :pm10, :source)
-        """)
-        db.execute(ins_sql, rows)
-        upd_sql = text("""
-            UPDATE measurements
-               SET latitude=:latitude, longitude=:longitude, pm25=:pm25, pm10=:pm10
-             WHERE ts=:ts AND city=:city AND source=:source
-        """)
         for r in rows:
-            db.execute(upd_sql, r)
+            existing = db.execute(text(
+                "SELECT id FROM measurements WHERE ts = :ts AND city = :city AND source = :source"
+            ), {"ts": r["ts"], "city": r["city"], "source": r["source"]}).first()
+            if existing:
+                db.execute(text("""
+                    UPDATE measurements
+                    SET latitude = :latitude, longitude = :longitude, pm25 = :pm25, pm10 = :pm10
+                    WHERE id = :id
+                """), {
+                    "id": existing[0],
+                    "latitude": r.get("latitude"),
+                    "longitude": r.get("longitude"),
+                    "pm25": r.get("pm25"),
+                    "pm10": r.get("pm10")
+                })
+            else:
+                db.execute(text("""
+                    INSERT INTO measurements (ts, city, latitude, longitude, pm25, pm10, source)
+                    VALUES (:ts, :city, :latitude, :longitude, :pm25, :pm10, :source)
+                """), r)
         db.commit()
         return len(rows)
     except Exception:

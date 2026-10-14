@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: airscope-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_secret_change_me}
+      MYSQL_DATABASE: ${MYSQL_DB:-airq}
+      MYSQL_USER: ${MYSQL_USER:-airscope}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-airscope_pass}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root_secret_change_me}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: airscope-backend
+    restart: always
+    environment:
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-airscope}:${MYSQL_PASSWORD:-airscope_pass}@db:3306/${MYSQL_DB:-airq}?charset=utf8mb4
+      ALLOWED_ORIGINS: http://localhost,http://localhost:80,http://localhost:5173,http://127.0.0.1:5173
+      API_KEY: ${API_KEY:-dev-key-123}
+      JWT_SECRET: ${JWT_SECRET:-your-secure-random-jwt-secret-key-here}
+      JWT_EXPIRES_MIN: 60
+      DEFAULT_PLAN: free
+      SOURCES_ENABLED: open-meteo,openaq,iqair,waqi
+      AGG_WEIGHTS: open-meteo=1.0,openaq=1.0,iqair=0.8,waqi=0.8
+    ports:
+      - "8000:8000"
+    volumes:
+      - models_data:/app/models
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: airscope-frontend
+    restart: always
+    ports:
+      - "80:80"
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  mysql_data:
+  models_data:

@@ -1,22 +1,22 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def compare_logic(db: Session, cities: list[str], days: int):
     by_city = {}
-    want_end = "NOW()"
-    want_start = f"DATE_SUB({want_end}, INTERVAL {days} DAY)"
+    now_dt = datetime.now(timezone.utc)
+    start_dt = now_dt - timedelta(days=days)
     
     for c in cities:
         rows = []
         try:
-            rows = db.execute(text(f"""
+            rows = db.execute(text("""
                 SELECT ts, pm25, pm10
                 FROM measurements
-                WHERE city=:c AND source='aggregated'
-                  AND ts >= {want_start} AND ts <= {want_end}
+                WHERE city = :c AND source = 'aggregated'
+                  AND ts >= :start_dt AND ts <= :now_dt
                 ORDER BY ts ASC
-            """), {"c": c}).mappings().all()
+            """), {"c": c, "start_dt": start_dt, "now_dt": now_dt}).mappings().all()
         except Exception:
             rows = []
 

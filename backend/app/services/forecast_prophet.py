@@ -21,14 +21,15 @@ os.makedirs(MODELS_DIR, exist_ok=True)
 def _load_series(db: Session, city: str, days: int) -> pd.DataFrame:
     """Pull last N days from MySQL as a pandas hourly series (pm2.5 as target)."""
 
+    start_dt = datetime.now(timezone.utc) - timedelta(days=days)
     rows = db.execute(text("""
                            SELECT ts, pm25
                            FROM measurements
                            WHERE city = :city
                              AND source = 'aggregated'
-                             AND ts >= DATE_SUB(NOW(), INTERVAL :days DAY)
+                             AND ts >= :start_dt
                            ORDER BY ts
-                           """), {"city": city, "days": days}).mappings().all()
+                           """), {"city": city, "start_dt": start_dt}).mappings().all()
 
     if not rows:
         raise ValueError(f"No data found for {city} in last {days} days. Run /scrape first.")

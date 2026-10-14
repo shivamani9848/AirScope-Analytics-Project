@@ -81,17 +81,14 @@ def require_auth_user(request: Request) -> Dict[str, Any]:
         raise HTTPException(status_code=401, detail="Authentication required. Please sign in.")
     return user
 
-def get_plan(request: Request, x_plan: Optional[str] = Header(None)) -> Plan:
-    """Get verified plan from authenticated user token, or fallback to header/default."""
-    # Authenticated user plan always takes strict precedence over arbitrary client headers
+def get_plan(request: Request) -> Plan:
+    """
+    Get verified subscription plan strictly from authenticated user token/session.
+    Unauthenticated requests strictly default to 'free' to prevent client-side privilege escalation.
+    """
     user = get_auth_user(request)
     if user and user.get("plan"):
-        plan = user["plan"].strip().lower()
+        plan = str(user["plan"]).strip().lower()
         if plan in {"free", "pro", "enterprise"}:
             return plan  # type: ignore
-    
-    # If unauthenticated, use header or default plan
-    plan = (x_plan or settings.DEFAULT_PLAN).strip().lower()
-    if plan not in {"free", "pro", "enterprise"}:
-        plan = "free"
-    return plan  # type: ignore
+    return "free"

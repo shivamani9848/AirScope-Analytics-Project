@@ -80,20 +80,7 @@ def _set_auth_cookie(response: Response, token: str):
         max_age=settings.JWT_EXPIRES_MIN * 60
     )
 
-def _get_dev_account(email: str):
-    """Explicitly configured development accounts for offline testing/evaluation."""
-    dev_email = os.getenv("DEV_USER_EMAIL", "demo@airscope.local").lower()
-    pro_email = os.getenv("PRO_USER_EMAIL", "pro@airscope.local").lower()
-    ent_email = os.getenv("ENT_USER_EMAIL", "enterprise@airscope.local").lower()
-    
-    target = email.strip().lower()
-    if target == dev_email:
-        return {"id": 1, "email": dev_email, "plan": "free", "password": os.getenv("DEV_USER_PWD", "AirScope123!")}
-    if target == pro_email:
-        return {"id": 2, "email": pro_email, "plan": "pro", "password": os.getenv("PRO_USER_PWD", "AirScope123!")}
-    if target == ent_email:
-        return {"id": 3, "email": ent_email, "plan": "enterprise", "password": os.getenv("ENT_USER_PWD", "AirScope123!")}
-    return None
+
 
 @router.post("/signup", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def signup(request: SignupRequest, response: Response, db: Session = Depends(get_db)):
@@ -181,25 +168,9 @@ def login(request: LoginRequest, response: Response, db: Session = Depends(get_d
     except HTTPException:
         raise
     except OperationalError:
-        # Graceful check for explicitly configured development accounts if database daemon is offline
-        dev_account = _get_dev_account(request.email)
-        if dev_account and request.password == dev_account["password"]:
-            token = create_access_token(
-                {"sub": str(dev_account["id"]), "email": dev_account["email"], "plan": dev_account["plan"]},
-                settings.JWT_EXPIRES_MIN
-            )
-            _set_auth_cookie(response, token)
-            return UserResponse(
-                id=dev_account["id"],
-                email=dev_account["email"],
-                plan=dev_account["plan"],
-                token=token,
-                created_at=datetime.now(timezone.utc),
-                last_login=datetime.now(timezone.utc)
-            )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Database service temporarily unavailable. Please start the MySQL service."
+            detail="Database service temporarily unavailable."
         )
     except Exception as e:
         db.rollback()

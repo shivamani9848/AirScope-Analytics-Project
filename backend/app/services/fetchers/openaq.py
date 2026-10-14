@@ -9,8 +9,10 @@ from .normalize import make_row, parse_ts
 
 logger = logging.getLogger(__name__)
 
+import time
+
 BASE_URL = "https://api.openaq.org/v2"
-TIMEOUT = 15  # seconds
+TIMEOUT = 10  # seconds
 RETRIES = 2
 
 
@@ -20,9 +22,17 @@ def _req(url: str, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             r = requests.get(url, params=params, timeout=TIMEOUT)
             if r.status_code == 200:
                 return r.json()
-            logger.warning("OpenAQ non-200: %s %s", r.status_code, r.text[:200])
+            if r.status_code in {400, 401, 403, 404, 410, 422}:
+                logger.warning("OpenAQ permanent error %s (not retrying): %s", r.status_code, r.text[:200])
+                return None
+            logger.warning("OpenAQ transient non-200 (%s): %s", r.status_code, r.text[:200])
+        except (requests.Timeout, requests.ConnectionError) as e:
+            logger.warning("OpenAQ connection issue (try %s): %s", i + 1, e)
         except Exception as e:
             logger.warning("OpenAQ request failed (try %s): %s", i + 1, e)
+            return None
+        if i < RETRIES:
+            time.sleep(0.5 * (2 ** i))
     return None
 
 

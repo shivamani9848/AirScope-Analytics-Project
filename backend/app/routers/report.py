@@ -67,9 +67,16 @@ def generate_llm_comparison_report(report_data: Dict[str, Any], request: Request
         llm_response = generate_llm_report(comparison_data, chart_data, cities, period_days, show_combined)
         
         return llm_response
-        
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate LLM report: {str(e)}")
+        err_msg = str(e)
+        if "Failed to communicate with LLM" in err_msg or "Connection refused" in err_msg or "Failed to connect" in err_msg:
+            raise HTTPException(
+                status_code=503,
+                detail="Ollama AI service is offline or unreachable. Please start Ollama with 'ollama run gemma3:4b' or export standard PDF reports."
+            )
+        raise HTTPException(status_code=500, detail=f"Failed to generate LLM report: {err_msg}")
 
 
 @router.post("/llm-forecast-note")
@@ -93,8 +100,15 @@ def generate_llm_forecast_report_endpoint(report_data: Dict[str, Any], request: 
         llm_response = generate_llm_forecast_report(forecast_data, chart_data, cities, horizon_days, train_days, show_ci, show_combined, selected_model)
         
         return llm_response
-        
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate LLM forecast report: {str(e)}")
+        err_msg = str(e)
+        if "Failed to communicate with LLM" in err_msg or "Connection refused" in err_msg or "Failed to connect" in err_msg:
+            raise HTTPException(
+                status_code=503,
+                detail="Ollama AI service is offline or unreachable. Please start Ollama with 'ollama run gemma3:4b' or export standard PDF reports."
+            )
+        raise HTTPException(status_code=500, detail=f"Failed to generate LLM forecast report: {err_msg}")
 
 

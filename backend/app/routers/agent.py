@@ -61,13 +61,27 @@ def mcp_call_tool(call: dict, request: Request, plan: Plan = Depends(get_plan), 
 
     if name == "forecast_city":
         enforce_forecast(plan, args.get("horizonDays", 7), 1)
-        out = forecast_city(db, args["city"], args.get("horizonDays", 7), args.get("trainDays", 30), args.get("pollutant", "pm25"), args.get("use_cache", True))
+        out = forecast_city(
+            db=db,
+            city=args["city"],
+            horizon_days=args.get("horizonDays", 7),
+            train_days=args.get("trainDays", 30),
+            pollutant=args.get("pollutant", "pm25"),
+            use_cache=args.get("use_cache", True)
+        )
         return {"ok": True, "result": out}
 
     if name == "forecast_multi":
         cities = args["cities"]
         enforce_forecast(plan, args.get("horizonDays", 7), len(cities))
-        out = forecast_cities(db, cities, args.get("horizonDays", 7), args.get("trainDays", 30), args.get("pollutant", "pm25"), args.get("use_cache", True))
+        out = forecast_cities(
+            db=db,
+            cities=cities,
+            horizon_days=args.get("horizonDays", 7),
+            train_days=args.get("trainDays", 30),
+            pollutant=args.get("pollutant", "pm25"),
+            use_cache=args.get("use_cache", True)
+        )
         return {"ok": True, "result": out}
 
     raise HTTPException(404, f"Unknown tool: {name}")
@@ -75,13 +89,40 @@ def mcp_call_tool(call: dict, request: Request, plan: Plan = Depends(get_plan), 
 @router.post("/plan", response_model=AgentPlanOut)
 def agent_plan(payload: AgentPlanIn, request: Request, plan: Plan = Depends(get_plan)):
     enforce_ai_agent(plan)
-    plan_obj = plan_with_llama(payload.prompt, TOOLS, temperature=0.2)
-    steps = [ToolStep(**step) for step in plan_obj.get("plan", [])]
-    return {
-        "plan": steps, 
-        "notes": plan_obj.get("notes"),
-        "irrelevant": plan_obj.get("irrelevant", False)
-    }
+    try:
+        plan_obj = plan_with_llama(payload.prompt, TOOLS, temperature=0.2)
+        steps = [ToolStep(**step) for step in plan_obj.get("plan", [])]
+        return {
+            "plan": steps, 
+            "notes": plan_obj.get("notes"),
+            "irrelevant": plan_obj.get("irrelevant", False)
+        }
+    except Exception as e:
+        # Graceful rule-based heuristic fallback if Ollama/Gemma is unavailable
+        p_lower = payload.prompt.lower()
+        import re
+        words = re.findall(r'[A-Za-z]+', payload.prompt)
+        capitalized = [w for w in words if w[0].isupper() and w.lower() not in {"compare", "forecast", "scrape", "and", "the", "for", "next", "days", "past", "last"}]
+        
+        if "compare" in p_lower and len(capitalized) >= 2:
+            return {
+                "plan": [ToolStep(name="compare_cities", arguments={"cities": capitalized[:3], "days": 7})],
+                "notes": "Rule-based heuristic plan (Ollama AI service is offline)",
+                "irrelevant": False
+            }
+        elif "forecast" in p_lower and len(capitalized) >= 1:
+            return {
+                "plan": [ToolStep(name="forecast_city", arguments={"city": capitalized[0], "horizonDays": 7, "trainDays": 30})],
+                "notes": "Rule-based heuristic plan (Ollama AI service is offline)",
+                "irrelevant": False
+            }
+        else:
+            return {
+                "plan": [],
+                "notes": f"AI planner offline ({str(e)}). Please specify a clear atmospheric comparison or forecasting query.",
+                "irrelevant": True,
+                "reason": "Ollama service unavailable"
+            }
 
 def _execute_step(db: Session, plan: Plan, step: ToolStep):
     name, args = step.name, (step.arguments or {})
@@ -100,13 +141,27 @@ def _execute_step(db: Session, plan: Plan, step: ToolStep):
 
     if name == "forecast_city":
         enforce_forecast(plan, args.get("horizonDays", 7), 1)
-        res = forecast_city(db, args["city"], args.get("horizonDays", 7), args.get("trainDays", 30), args.get("pollutant", "pm25"), args.get("use_cache", True))
+        res = forecast_city(
+            db=db,
+            city=args["city"],
+            horizon_days=args.get("horizonDays", 7),
+            train_days=args.get("trainDays", 30),
+            pollutant=args.get("pollutant", "pm25"),
+            use_cache=args.get("use_cache", True)
+        )
         return {"tool": name, "ok": True, "args": args, "result": res}
 
     if name == "forecast_multi":
         cities = args["cities"]
         enforce_forecast(plan, args.get("horizonDays", 7), len(cities))
-        res = forecast_cities(db, cities, args.get("horizonDays", 7), args.get("trainDays", 30), args.get("pollutant", "pm25"), args.get("use_cache", True))
+        res = forecast_cities(
+            db=db,
+            cities=cities,
+            horizon_days=args.get("horizonDays", 7),
+            train_days=args.get("trainDays", 30),
+            pollutant=args.get("pollutant", "pm25"),
+            use_cache=args.get("use_cache", True)
+        )
         return {"tool": name, "ok": True, "args": args, "result": res}
 
     return {"tool": name, "ok": False, "args": args, "error": "Unknown tool"}

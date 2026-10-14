@@ -61,11 +61,13 @@ def test_aggregation_daily(client):
     assert "points" in first_pt
 
 def test_multi_city_comparison_and_rankings(client):
-    # Test comparison between London and Delhi with Pro plan header
+    from app.core.security import create_access_token
+    token = create_access_token({"sub": "99", "email": "pro@airscope.local", "plan": "pro"}, 60)
+    # Test comparison between London and Delhi with Pro plan authentication
     res = client.post(
         "/compare",
         json={"cities": ["London", "Delhi"], "days": 3},
-        headers={"X-PLAN": "pro"}
+        headers={"Authorization": f"Bearer {token}"}
     )
     assert res.status_code == 200
     data = res.json()

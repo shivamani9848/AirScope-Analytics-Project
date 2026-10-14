@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; AirQualityBot/1.0; +https://example.com/contact)",
 }
-TIMEOUT = 15
+import time
+
+TIMEOUT = 10
 RETRIES = 2
 
 
@@ -23,9 +25,17 @@ def _get(url: str) -> Optional[str]:
             r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
             if r.status_code == 200:
                 return r.text
-            logger.warning("IQAir non-200: %s", r.status_code)
+            if r.status_code in {400, 401, 403, 404, 410, 422}:
+                logger.warning("IQAir permanent error %s (not retrying)", r.status_code)
+                return None
+            logger.warning("IQAir transient non-200: %s", r.status_code)
+        except (requests.Timeout, requests.ConnectionError) as e:
+            logger.warning("IQAir network issue (try %s): %s", i + 1, e)
         except Exception as e:
             logger.warning("IQAir request failed (try %s): %s", i + 1, e)
+            return None
+        if i < RETRIES:
+            time.sleep(0.5 * (2 ** i))
     return None
 
 
